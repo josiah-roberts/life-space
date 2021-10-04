@@ -12,7 +12,17 @@ namespace LifeSpace
 {
     class Program
     {
-        static string[] legalCommands = new string[] { "v", "view", "a", "add", "d", "delete", "e", "edit", "l", "list", "c", "clear", "r", "report", "q", "quit", "h", "help" };
+        static string[] legalCommands = new string[] {
+            "v", "view",
+            "a", "add",
+            "d", "delete",
+            "e", "edit",
+            "l", "list",
+            "c", "clear",
+            "r", "report",
+            "q", "quit",
+            "h", "help"
+        };
         static (string Name, Func<(Activity Activity, string Value), Activity> Handler)[] EditHandlers = {
             ("name", (args) => args.Activity with {Name = args.Value}),
             ("importance", (args) => args.Activity with {Importance = new (Int32.Parse(args.Value))}),
@@ -105,6 +115,7 @@ namespace LifeSpace
             if (command == "add")
             {
                 var newActivity = AddNewActivity();
+                RenderActivity(newActivity);
                 return activities.Append(newActivity).ToArray();
             }
 
@@ -221,6 +232,11 @@ namespace LifeSpace
             if (command == "help")
             {
                 Console.WriteLine(String.Join("\n", legalCommands.Where(x => x.Length > 1)));
+            }
+
+            if (command == "delete" && args.SingleOrDefault()?.ToLowerInvariant() is string dName)
+            {
+                return activities.Where(a => a.Name.ToLowerInvariant() != dName).ToArray();
             }
 
             return activities;

@@ -26,8 +26,7 @@ namespace LifeSpace
 
     record Activity(string Name, UrgencyDescriptor Urgency, Importance Importance, Effort Effort, Pleasure Pleasure)
     {
-        // public double PrioritySummary => Math.Round((double)(Urgency.CurrentUrgency * Importance) / 1_000, 2);
-        public double PrioritySummary => Math.Round(Math.Log10((Urgency.CurrentUrgency * Importance) / Margin), 2);
+        public double PrioritySummary => Math.Round(Math.Log10((Urgency.CurrentUrgency * Importance) / Math.Max(Margin, 1)), 2);
         public double ValueForEffort => Math.Round((double)Importance / Effort, 2);
         public double PleasureForEffort => Math.Round((double)Pleasure / Effort, 2);
         public double Margin
