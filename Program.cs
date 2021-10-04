@@ -12,6 +12,7 @@ namespace LifeSpace
 {
     class Program
     {
+        static string[] legalCommands = new string[] { "v", "view", "a", "add", "d", "delete", "e", "edit", "l", "list", "c", "clear", "r", "report", "q", "quit", "h", "help" };
         static (string Name, Func<(Activity Activity, string Value), Activity> Handler)[] EditHandlers = {
             ("name", (args) => args.Activity with {Name = args.Value}),
             ("importance", (args) => args.Activity with {Importance = new (Int32.Parse(args.Value))}),
@@ -82,6 +83,7 @@ namespace LifeSpace
         static void RenderActivity(Activity activity)
         {
             WriteLine(activity.Name);
+            WriteLineColor($"  Priority Summary: {activity.PrioritySummary}", PriorityColor(activity.PrioritySummary));
             WriteLine($"  Importance: {activity.Importance}");
             WriteLine($"  Effort: {activity.Effort}");
             WriteLine($"  Pleasure: {activity.Pleasure}");
@@ -89,7 +91,6 @@ namespace LifeSpace
             WriteLine($"    {activity.Urgency.Urgency.Start} -> {activity.Urgency.Urgency.End}");
             WriteLine($"    {activity.Urgency.Interval.Start.ToIsoDate()} -> {activity.Urgency.Interval.End.ToIsoDate()}");
             WriteLineColor($"  Margin: {activity.Margin}", MarginColor(activity.Margin));
-            WriteLineColor($"  Priority Summary: {activity.PrioritySummary}", PriorityColor(activity.PrioritySummary));
         }
 
         static Activity[] HandleCommand(Activity[] activities, (string command, IList<string?> args) input)
@@ -112,6 +113,15 @@ namespace LifeSpace
                 && activities.SingleOrDefault(x => x.Name.ToLowerInvariant().StartsWith(viewName)) is Activity vActivity)
             {
                 RenderActivity(vActivity);
+                return activities;
+            }
+
+            if (command == "view" && !args.Any())
+            {
+                foreach (var activity in activities.OrderByDescending(x => x.PrioritySummary))
+                {
+                    RenderActivity(activity);
+                }
                 return activities;
             }
 
@@ -160,11 +170,12 @@ namespace LifeSpace
 
             if (command == "edit" && !args.Any())
             {
+                WriteLine("edit <activity-name> <field> <new-value>");
                 foreach (var (Name, _) in EditHandlers)
                 {
-                    WriteLine($"  {Name}");
-                    return activities;
+                    WriteLine($"    {Name}");
                 }
+                return activities;
             }
 
             if (
@@ -178,6 +189,38 @@ namespace LifeSpace
                 var edited = handler.Handler((eActivity, value));
                 RenderActivity(edited);
                 return activities.Where(x => x != eActivity).Append(edited).ToArray();
+            }
+
+            if (command == "report")
+            {
+                if (activities.OrderByDescending(x => x.PrioritySummary).FirstOrDefault(x => x.PrioritySummary > 2) is Activity highPriority)
+                {
+                    WriteLine();
+                    WriteLineColor($"  {highPriority.Name} is high-priority", ConsoleColor.White);
+                    WriteLineColor($"    Priority: {highPriority.PrioritySummary}", PriorityColor(highPriority.PrioritySummary));
+                    WriteLineColor($"    Margin: {highPriority.Margin}", MarginColor(highPriority.Margin));
+                }
+
+                if (activities.OrderByDescending(x => x.ValueForEffort).FirstOrDefault(x => x.ValueForEffort > 10) is Activity highValue)
+                {
+                    WriteLine();
+                    WriteLineColor($"  {highValue.Name} is high-value", ConsoleColor.White);
+                    WriteLineColor($"    Value for effort: {highValue.ValueForEffort}", ValueColor(highValue.ValueForEffort));
+                    WriteLineColor($"    Overall effort: {highValue.Effort}");
+                }
+
+                if (activities.OrderBy(x => x.Margin).FirstOrDefault(x => x.Margin < 2) is Activity lowMargin)
+                {
+                    WriteLine();
+                    WriteLineColor($"  {lowMargin.Name} is almost due", ConsoleColor.White);
+                    WriteLineColor($"    Margin: {lowMargin.Margin}", MarginColor(lowMargin.Margin));
+                    WriteLineColor($"    Due: {Math.Round((lowMargin.Urgency.Interval.End - DateTime.Now).TotalDays, 2)} days");
+                }
+            }
+
+            if (command == "help")
+            {
+                Console.WriteLine(String.Join("\n", legalCommands.Where(x => x.Length > 1)));
             }
 
             return activities;
@@ -203,11 +246,15 @@ namespace LifeSpace
 
         static async Task Main(string[] args)
         {
-            var legalCommands = new string[] { "v", "view", "a", "add", "d", "delete", "e", "edit", "l", "list", "c", "clear" };
             var configPath = InitializeConfig();
             var activities = JsonSerializer.Deserialize<Activity[]>(await File.ReadAllTextAsync(configPath))!;
 
             Console.Clear();
+
+            WriteLineColor("Life-Space", ConsoleColor.Magenta);
+            WriteLineColor("  Try \"list priority\"");
+            WriteLineColor("  Or  \"list value\"");
+
             while (true)
             {
                 var command = Collect<(string, IList<string?>)>("", x =>
@@ -223,6 +270,8 @@ namespace LifeSpace
 
                 activities = HandleCommand(activities, command);
                 await File.WriteAllTextAsync(configPath, JsonSerializer.Serialize(activities));
+
+                if (command.Item1 == "quit") return;
             }
         }
     }
