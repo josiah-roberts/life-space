@@ -103,142 +103,170 @@ namespace LifeSpace
             WriteLineColor($"  Margin: {activity.Margin}", MarginColor(activity.Margin));
         }
 
+        static Dictionary<string, Func<Activity[], IList<string?>, Activity[]>> CommandHandlers = new()
+        {
+            { "clear", (activities, _) => { Clear(); return activities; } },
+            {
+                "add",
+                (activities, args) =>
+                {
+                    var newActivity = AddNewActivity();
+                    RenderActivity(newActivity);
+                    return activities.Append(newActivity).ToArray();
+                }
+            },
+            {
+                "view",
+                (activities, args) =>
+               {
+                   if (args.SingleOrDefault()?.ToLowerInvariant() is string viewName
+                       && activities.SingleOrDefault(x => x.Name.ToLowerInvariant().StartsWith(viewName)) is Activity vActivity)
+                   {
+                       RenderActivity(vActivity);
+                       return activities;
+                   }
+
+
+                   foreach (var activity in activities.OrderByDescending(x => x.PrioritySummary))
+                   {
+                       RenderActivity(activity);
+                   }
+                   return activities;
+               }
+            },
+            {
+                "list",
+                (activities, args) =>
+                {
+                    var variant = args.FirstOrDefault();
+                    if (variant == null || variant == "priority")
+                    {
+                        WriteLine("Priority listing:");
+                        foreach (var a in activities.OrderByDescending(x => x.PrioritySummary))
+                        {
+                            WriteLineColor($"  {a.Name}: {a.PrioritySummary}", PriorityColor(a.PrioritySummary));
+                        }
+                    }
+
+                    if (variant == "value")
+                    {
+                        WriteLine("Low-hanging-fruit listing:");
+                        foreach (var a in activities.OrderByDescending(x => x.ValueForEffort))
+                        {
+                            WriteLineColor($"  {a.Name}: {a.ValueForEffort}", ValueColor(a.ValueForEffort));
+                        }
+                    }
+
+
+                    if (variant == "margin")
+                    {
+                        WriteLine("Time-margin listing:");
+                        foreach (var a in activities.OrderBy(x => x.Margin))
+                        {
+                            WriteLineColor($"  {a.Name}: {a.Margin}", MarginColor(a.Margin));
+                        }
+                    }
+
+                    if (variant == "fun")
+                    {
+                        WriteLine("Fun-for-effort listing:");
+                        foreach (var a in activities.OrderByDescending(x => (int)x.PleasureForEffort))
+                        {
+                            WriteLineColor($"  {a.Name}: {a.PleasureForEffort}");
+                        }
+                    }
+
+                    return activities;
+                }
+            },
+            {
+                "edit",
+                (activities, args) =>
+                {
+                    if (!args.Any())
+                    {
+                        WriteLine("edit <activity-name> <field> <new-value>");
+                        foreach (var (Name, _) in EditHandlers)
+                        {
+                            WriteLine($"    {Name}");
+                        }
+                        return activities;
+                    }
+
+                    if (
+                       args.FirstOrDefault()?.ToLowerInvariant() is string editName
+                        && activities.SingleOrDefault(x => x.Name.ToLowerInvariant().StartsWith(editName)) is Activity eActivity
+                        && args.ElementAtOrDefault(1) is string field
+                        && EditHandlers.SingleOrDefault((h) => h.Name == field) is var handler
+                        && args.ElementAtOrDefault(2) is string value
+                    )
+                    {
+                        var edited = handler.Handler((eActivity, value));
+                        RenderActivity(edited);
+                        return activities.Where(x => x != eActivity).Append(edited).ToArray();
+                    }
+
+                    return activities;
+                }
+            },
+            {
+                "report",
+                (activities, args) =>
+                {
+                    if (activities.OrderByDescending(x => x.PrioritySummary).FirstOrDefault(x => x.PrioritySummary > 2) is Activity highPriority)
+                    {
+                        WriteLine();
+                        WriteLineColor($"  {highPriority.Name} is high-priority", ConsoleColor.White);
+                        WriteLineColor($"    Priority: {highPriority.PrioritySummary}", PriorityColor(highPriority.PrioritySummary));
+                        WriteLineColor($"    Margin: {highPriority.Margin}", MarginColor(highPriority.Margin));
+                    }
+
+                    if (activities.OrderByDescending(x => x.ValueForEffort).FirstOrDefault(x => x.ValueForEffort > 10) is Activity highValue)
+                    {
+                        WriteLine();
+                        WriteLineColor($"  {highValue.Name} is high-value", ConsoleColor.White);
+                        WriteLineColor($"    Value for effort: {highValue.ValueForEffort}", ValueColor(highValue.ValueForEffort));
+                        WriteLineColor($"    Overall effort: {highValue.Effort}");
+                    }
+
+                    if (activities.OrderBy(x => x.Margin).FirstOrDefault(x => x.Margin < 2) is Activity lowMargin)
+                    {
+                        WriteLine();
+                        WriteLineColor($"  {lowMargin.Name} is almost due", ConsoleColor.White);
+                        WriteLineColor($"    Margin: {lowMargin.Margin}", MarginColor(lowMargin.Margin));
+                        WriteLineColor($"    Due: {Math.Round((lowMargin.Urgency.Interval.End - DateTime.Now).TotalDays, 2)} days");
+                    }
+                    return activities;
+                }
+            },
+            {
+                "help",
+                (activities, _) =>
+                {
+                    Console.WriteLine(String.Join("\n", legalCommands.Where(x => x.Length > 1)));
+                    return activities;
+                }
+            },
+            {
+                "delete",
+                (activities, args) =>
+                {
+                    if (args.SingleOrDefault()?.ToLowerInvariant() is string dName)
+                    {
+                        return activities.Where(a => a.Name.ToLowerInvariant() != dName).ToArray();
+                    }
+                    return activities;
+                }
+            }
+        };
+
         static Activity[] HandleCommand(Activity[] activities, (string command, IList<string?> args) input)
         {
             var (command, args) = input;
-            if (command == "clear")
+            if (CommandHandlers.TryGetValue(command, out var handler))
             {
-                Clear();
-                return activities;
+                return handler(activities, args);
             }
-
-            if (command == "add")
-            {
-                var newActivity = AddNewActivity();
-                RenderActivity(newActivity);
-                return activities.Append(newActivity).ToArray();
-            }
-
-            if (command == "view"
-                && args.SingleOrDefault()?.ToLowerInvariant() is string viewName
-                && activities.SingleOrDefault(x => x.Name.ToLowerInvariant().StartsWith(viewName)) is Activity vActivity)
-            {
-                RenderActivity(vActivity);
-                return activities;
-            }
-
-            if (command == "view" && !args.Any())
-            {
-                foreach (var activity in activities.OrderByDescending(x => x.PrioritySummary))
-                {
-                    RenderActivity(activity);
-                }
-                return activities;
-            }
-
-            if (command == "list")
-            {
-                var variant = args.FirstOrDefault();
-                if (variant == null || variant == "priority")
-                {
-                    WriteLine("Priority listing:");
-                    foreach (var a in activities.OrderByDescending(x => x.PrioritySummary))
-                    {
-                        WriteLineColor($"  {a.Name}: {a.PrioritySummary}", PriorityColor(a.PrioritySummary));
-                    }
-                }
-
-                if (variant == "value")
-                {
-                    WriteLine("Low-hanging-fruit listing:");
-                    foreach (var a in activities.OrderByDescending(x => x.ValueForEffort))
-                    {
-                        WriteLineColor($"  {a.Name}: {a.ValueForEffort}", ValueColor(a.ValueForEffort));
-                    }
-                }
-
-
-                if (variant == "margin")
-                {
-                    WriteLine("Time-margin listing:");
-                    foreach (var a in activities.OrderBy(x => x.Margin))
-                    {
-                        WriteLineColor($"  {a.Name}: {a.Margin}", MarginColor(a.Margin));
-                    }
-                }
-
-                if (variant == "fun")
-                {
-                    WriteLine("Fun-for-effort listing:");
-                    foreach (var a in activities.OrderByDescending(x => (int)x.PleasureForEffort))
-                    {
-                        WriteLineColor($"  {a.Name}: {a.PleasureForEffort}");
-                    }
-                }
-
-                return activities;
-            }
-
-            if (command == "edit" && !args.Any())
-            {
-                WriteLine("edit <activity-name> <field> <new-value>");
-                foreach (var (Name, _) in EditHandlers)
-                {
-                    WriteLine($"    {Name}");
-                }
-                return activities;
-            }
-
-            if (
-                command == "edit" && args.FirstOrDefault()?.ToLowerInvariant() is string editName
-                && activities.SingleOrDefault(x => x.Name.ToLowerInvariant().StartsWith(editName)) is Activity eActivity
-                && args.ElementAtOrDefault(1) is string field
-                && EditHandlers.SingleOrDefault((h) => h.Name == field) is var handler
-                && args.ElementAtOrDefault(2) is string value
-            )
-            {
-                var edited = handler.Handler((eActivity, value));
-                RenderActivity(edited);
-                return activities.Where(x => x != eActivity).Append(edited).ToArray();
-            }
-
-            if (command == "report")
-            {
-                if (activities.OrderByDescending(x => x.PrioritySummary).FirstOrDefault(x => x.PrioritySummary > 2) is Activity highPriority)
-                {
-                    WriteLine();
-                    WriteLineColor($"  {highPriority.Name} is high-priority", ConsoleColor.White);
-                    WriteLineColor($"    Priority: {highPriority.PrioritySummary}", PriorityColor(highPriority.PrioritySummary));
-                    WriteLineColor($"    Margin: {highPriority.Margin}", MarginColor(highPriority.Margin));
-                }
-
-                if (activities.OrderByDescending(x => x.ValueForEffort).FirstOrDefault(x => x.ValueForEffort > 10) is Activity highValue)
-                {
-                    WriteLine();
-                    WriteLineColor($"  {highValue.Name} is high-value", ConsoleColor.White);
-                    WriteLineColor($"    Value for effort: {highValue.ValueForEffort}", ValueColor(highValue.ValueForEffort));
-                    WriteLineColor($"    Overall effort: {highValue.Effort}");
-                }
-
-                if (activities.OrderBy(x => x.Margin).FirstOrDefault(x => x.Margin < 2) is Activity lowMargin)
-                {
-                    WriteLine();
-                    WriteLineColor($"  {lowMargin.Name} is almost due", ConsoleColor.White);
-                    WriteLineColor($"    Margin: {lowMargin.Margin}", MarginColor(lowMargin.Margin));
-                    WriteLineColor($"    Due: {Math.Round((lowMargin.Urgency.Interval.End - DateTime.Now).TotalDays, 2)} days");
-                }
-            }
-
-            if (command == "help")
-            {
-                Console.WriteLine(String.Join("\n", legalCommands.Where(x => x.Length > 1)));
-            }
-
-            if (command == "delete" && args.SingleOrDefault()?.ToLowerInvariant() is string dName)
-            {
-                return activities.Where(a => a.Name.ToLowerInvariant() != dName).ToArray();
-            }
-
             return activities;
         }
 
