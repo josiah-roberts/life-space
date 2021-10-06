@@ -272,20 +272,21 @@ namespace LifeSpace
 
         static string InitializeConfig()
         {
-            var configDir = Path.Combine(GetFolderPath(SpecialFolder.UserProfile), ".life-space");
+            var defaultPath = Path.Combine(GetFolderPath(SpecialFolder.UserProfile), ".life-space", "activities.json");
+            var actualPath = Environment.GetEnvironmentVariable("LIFE_SPACE_PATH") ?? defaultPath;
+
+            var configDir = Path.GetDirectoryName(actualPath)!;
             if (!Directory.Exists(configDir))
             {
                 Directory.CreateDirectory(configDir);
             }
 
-            var configPath = Path.Combine(configDir, "activities.json");
-            if (!File.Exists(configPath))
+            if (!File.Exists(actualPath))
             {
-
-                using var file = File.Create(configPath);
+                using var file = File.Create(actualPath);
                 file.Write(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new Activity[0])));
             }
-            return configPath;
+            return actualPath;
         }
 
         static async Task Main(string[] args)
